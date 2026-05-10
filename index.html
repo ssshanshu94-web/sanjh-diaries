@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sanjh Diaries - 3D Memories</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
+        
+        body { font-family: 'Outfit', sans-serif; overflow-x: hidden; scroll-behavior: smooth; }
+        
+        #map { 
+            height: 60vh; 
+            width: 100%; 
+            z-index: 1; 
+            background: #aad3df; 
+            cursor: default;
+            border-radius: 1.5rem;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.55);
+        }
+
+        .leaflet-container { cursor: default !important; }
+        .leaflet-container:active { cursor: grab !important; }
+        .pin-wrapper { cursor: pointer !important; }
+        
+        /* Ensure active marker is always on top of others */
+        .leaflet-marker-icon:has(.pin-wrapper.active) {
+            z-index: 9999 !important;
+        }
+        
+        .timeline-container { padding: 20px 0; }
+        
+        /* Aesthetic Black-to-White Gradient Card */
+        .glass-card { 
+            background: linear-gradient(to bottom, rgba(15, 23, 42, 0.95) 0%, rgba(255, 255, 255, 0.98) 100%); 
+            backdrop-filter: blur(12px); 
+            border: none; 
+            box-shadow: none; 
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        
+        .card-collage {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            opacity: 0.25; 
+            z-index: 0;
+            pointer-events: none;
+        }
+        .collage-slice {
+            flex: 1;
+            background-size: cover;
+            background-position: center;
+        }
+
+        .timeline-card { 
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
+            transform-origin: center;
+            width: 100%; 
+            cursor: pointer;
+        }
+        .timeline-card:hover { transform: scale(1.05); z-index: 50; }
+        
+        .year-indicator { background: linear-gradient(135deg, #4f46e5 0%, #818cf8 100%); }
+
+        /* --- Hierarchical Filter Styles --- */
+        .filter-dropdown-container { position: relative; display: inline-block; }
+        .filter-menu {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: white;
+            min-width: 160px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            border: 1px solid #f1f5f9;
+            padding: 8px;
+            margin-top: 8px; 
+            z-index: 3000;
+            display: none;
+        }
+
+        .filter-menu::before {
+            content: "";
+            position: absolute;
+            top: -12px;
+            left: 0;
+            width: 100%;
+            height: 12px;
+            background: transparent;
+        }
+
+        .filter-dropdown-container:hover .filter-menu { display: block; }
+        
+        .filter-item {
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #475569;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            transition: all 0.2s;
+        }
+        .filter-item:hover { background: #f8fafc; color: #4f46e5; }
+        
+        .month-flyout {
+            position: absolute;
+            left: 100%;
+            top: 0;
+            background: white;
+            min-width: 140px;
+            border-radius: 16px;
+            box-shadow: 10px 10px 25px rgba(0,0,0,0.1);
+            border: 1px solid #f1f5f9;
+            padding: 8px;
+            margin-left: 4px;
+            display: none;
+        }
+
+        .month-flyout::before {
+            content: "";
+            position: absolute;
+            left: -10px;
+            top: 0;
+            width: 10px;
+            height: 100%;
+            background: transparent;
+        }
+
+        .filter-item:hover .month-flyout { display: block; }
+        
+        .month-item {
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            color: #64748b;
+            transition: all 0.2s;
+        }
+        .month-item:hover { background: #eef2ff; color: #4f46e5; }
+
+        /* --- 3D PIN STYLES --- */
+        .custom-div-icon { background: none; border: none; }
+        .pin-wrapper { position: relative; width: 50px; height: 50px; display: flex; justify-content: center; align-items: center; cursor: pointer; }
+        .layer-stack { position: relative; width: 30px; height: 30px; transition: transform 0.4s ease; display: flex; align-items: center; justify-content: center; }
+        .shape-layer { position: absolute; width: 100%; height: 100%; transition: all 0.4s ease; opacity: 0; display: flex; align-items: center; justify-content: center; }
+        .shape-layer.main { opacity: 1; z-index: 10; }
+        .shape-layer svg { width: 100%; height: 100%; }
+        .shape-layer:not(.main) svg { fill: none; stroke: #ef4444; stroke-width: 1px; }
+        .shape-layer.main svg { fill: #ef4444; }
+        .pin-wrapper.active .layer-stack { transform: rotate(-35deg) skew(20deg); }
+        .pin-wrapper.active .shape-layer:nth-child(1) { transform: translate(3px, -3px); opacity: 0.2; }
+        .pin-wrapper.active .shape-layer:nth-child(2) { transform: translate(6px, -6px); opacity: 0.4; }
+        .pin-wrapper.active .shape-layer:nth-child(3) { transform: translate(9px, -9px); opacity: 0.6; }
+        .pin-wrapper.active .shape-layer.main { transform: translate(12px, -12px); }
+
+        /* --- STACKED & INFINITE SCROLLABLE TOOLTIP PHOTOS --- */
+        .collage-tooltip {
+            position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%) translateY(10px);
+            background: white; padding: 16px; border-radius: 28px; width: 280px; opacity: 0; visibility: hidden; pointer-events: none;
+            transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1); box-shadow: 0 30px 60px rgba(0, 0, 0, 0.2); z-index: 1000;
+            overflow: visible;
+        }
+        .pin-wrapper.active .collage-tooltip { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+
+        .stacked-photo-container {
+            height: 180px; 
+            margin-top: -15px; 
+            display: flex;
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding: 35px 40px 30px 20px; 
+            scrollbar-width: none; 
+            -ms-overflow-style: none; 
+            overflow-anchor: none; 
+            align-items: center;
+            transition: margin-top 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), height 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .stacked-photo-container:has(.stacked-photo-card:hover) {
+            margin-top: 10px; 
+            height: 230px; 
+        }
+        
+        .stacked-photo-container::-webkit-scrollbar { display: none; } 
+
+        .stacked-photo-card {
+            flex: 0 0 100px; 
+            height: 140px;
+            background-size: cover;
+            background-position: center;
+            border-radius: 16px;
+            border: 3px solid white;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            margin-left: -50px; 
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease, opacity 0.3s ease; 
+            transform: translateX(-30px) translateY(15px) rotate(-10deg) scale(0.9);
+            transform-origin: center center;
+            opacity: 0;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .stacked-photo-card:first-child { margin-left: 0; }
+
+        .pin-wrapper.active .stacked-photo-card {
+            transform: translateX(0) translateY(0) rotate(0) scale(1);
+            opacity: 1;
+        }
+
+        .pin-wrapper.active .stacked-photo-card:hover {
+            transform: translateY(-20px) scale(1.15) !important;
+            z-index: 100 !important;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.25);
+        }
+
+        .pin-wrapper.active .stacked-photo-card:hover ~ .stacked-photo-card {
+            transform: translateX(40px) scale(1);
+        }
+
+        .control-input { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 8px 12px; font-size: 12px; font-weight: 600; color: #475569; outline: none; transition: all 0.2s; }
+        .control-input:focus { border-color: #4f46e5; }
+        .sort-select { appearance: none; padding-right: 32px; cursor: pointer; }
+
+        /* Full Page View Transition */
+        #main-view, #gallery-view { transition: opacity 0.3s ease; }
+
+        /* --- NEON DASH FLOATING LOADER STYLES --- */
+        #initial-loader {
+            transition: opacity 0.6s cubic-bezier(0.25, 1, 0.5, 1), visibility 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+        .neon-loader-container {
+            width: 250px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            animation: float 4s ease-in-out infinite;
+            filter: drop-shadow(0 20px 15px rgba(56, 189, 248, 0.2));
+            margin-bottom: 20px;
+        }
+        .neon-loader-container svg {
+            width: 100%;
+            height: auto;
+        }
+        .dash {
+            fill: none;
+            stroke-width: 5;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            --animation-speed: 3s;
+            --neon-blue: #38bdf8;
+            --neon-purple: #a855f7;
+            --neon-pink: #f472b6;
+            animation:
+                dashArray var(--animation-speed) ease-in-out infinite,
+                dashOffset var(--animation-speed) linear infinite,
+                colorShift calc(var(--animation-speed) * 2) linear infinite;
+        }
+        .s-top { animation-delay: 0s; }
+        .s-mid { animation-delay: 0.2s; }
+        .s-bot { animation-delay: 0.4s; }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0px);
+                filter: drop-shadow(0 20px 15px rgba(56, 189, 248, 0.2));
+            }
+            50% {
+                transform: translateY(-20px);
+                filter: drop-shadow(0 40px 30px rgba(56, 189, 248, 0.4));
+            }
+        }
+        @keyframes dashArray {
+            0% { stroke-dasharray: 0 1 359 0; }
+            50% { stroke-dasharray: 0 359 1 0; }
+            100% { stroke-dasharray: 359 1 0 0; }
+        }
+        @keyframes dashOffset {
+            0% { stroke-dashoffset: 360; }
+            100% { stroke-dashoffset: 0; }
+        }
+        @keyframes colorShift {
+            0%, 100% { stroke: var(--neon-blue); }
+            33% { stroke: var(--neon-purple); }
+            66% { stroke: var(--neon-pink); }
+        }
+    </style>
+</head>
+<body class="bg-[#fcfdff] text-slate-900">
+
+    <!-- NEON INITIAL LOADER -->
+    <div id="initial-loader" class="fixed inset-0 bg-[#0f172a] z-[9999] flex flex-col items-center justify-center">
+        <div class="neon-loader-container">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 250 380 250" fill="none">
+                <g>
+                    <polygon class="dash s-top" pathLength="360" points="-.2 329.1 84 287 336.8 287 252.5 329.1 -.2 329.1"></polygon>
+                    <polygon class="dash s-mid" pathLength="360" points="-.2 392.3 84 350.2 336.8 350.2 252.5 392.3 -.2 392.3"></polygon>
+                    <polygon class="dash s-bot" pathLength="360" points="-.2 455.5 84 413.4 336.8 413.4 252.5 455.5 -.2 455.5"></polygon>
+                </g>
+            </svg>
+        </div>
+        <div class="flex flex-col items-center z-10 relative">
+            <h1 class="text-4xl font-extrabold tracking-tight text-white drop-shadow-[0_0_15px_rgba(56,189,248,0.5)]">Sanjh<span class="text-sky-400">Diaries</span></h1>
+            <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mt-3 animate-pulse">Mapping Memories...</p>
+        </div>
+    </div>
+
+    <header class="bg-white border-b border-slate-100 px-6 py-4 flex justify-between items-center sticky top-0 z-[2000]">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+                <i data-lucide="map" class="text-white w-5 h-5"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-extrabold tracking-tight">Sanjh<span class="text-indigo-600">Diaries</span></h1>
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Interactive Sanjh Travel Collage</p>
+            </div>
+        </div>
+        <button onclick="window.requestClearAll()" class="px-4 py-2 bg-slate-900 text-white rounded-full text-xs font-bold hover:bg-red-500 transition-all">Reset All</button>
+    </header>
+
+    <!-- MAIN VIEW -->
+    <div id="main-view" class="block">
+        <div class="bg-slate-50/50 border-b border-slate-100 py-6 px-4">
+            <div class="max-w-md mx-auto relative">
+                <div class="bg-white rounded-2xl p-1.5 flex items-center shadow-sm border border-slate-200">
+                    <div class="pl-4 pr-2 text-slate-400"><i data-lucide="search" class="w-4 h-4"></i></div>
+                    <input type="text" id="map-search" placeholder="Search location or double-click map..." class="bg-transparent border-none outline-none w-full py-2.5 text-sm font-medium" oninput="debounceSearch(this.value)">
+                    <div id="search-loading" class="hidden pr-4">
+                        <div class="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                </div>
+                <div id="search-results-container" class="hidden absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl overflow-hidden shadow-2xl border border-slate-100 z-[1500]">
+                    <div id="search-results" class="max-h-64 overflow-y-auto py-2"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="px-3 sm:px-6 md:px-10 lg:px-16 xl:px-24 mt-4">
+            <div class="relative w-full">
+                <div id="map"></div>
+                <!-- Current Location Button -->
+                <button id="location-btn" onclick="window.goToCurrentLocation()" class="absolute bottom-6 right-6 z-[1000] bg-white p-3 rounded-2xl shadow-xl border border-slate-100 text-slate-700 hover:text-indigo-600 hover:bg-indigo-50 transition-all active:scale-95 group focus:outline-none" title="Your Current Location">
+                    <i data-lucide="locate-fixed" class="w-6 h-6 transition-colors duration-300"></i>
+                </button>
+            </div>
+        </div>
+
+        <main class="p-8 max-w-7xl mx-auto">
+            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-8">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center">
+                        <i data-lucide="calendar" class="text-indigo-600 w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-2xl font-bold text-slate-800">Your Journey</h2>
+                        <p id="stats" class="text-slate-400 text-sm font-medium">0 memories collected</p>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-3 bg-slate-50 p-2.5 rounded-2xl border border-slate-100 shadow-sm">
+                    <div class="relative flex items-center">
+                        <i data-lucide="search" class="absolute left-3 w-3 h-3 text-slate-400"></i>
+                        <input type="text" id="timeline-filter" oninput="window.handleFilterChange(this.value)" placeholder="Search memories..." class="control-input pl-8 w-32 sm:w-44" />
+                    </div>
+
+                    <div class="filter-dropdown-container">
+                        <button class="control-input flex items-center gap-2 pr-2 hover:border-indigo-400 transition-colors">
+                            <span id="active-filter-label" class="truncate max-w-[100px]">All Years</span>
+                            <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400"></i>
+                        </button>
+                        <div id="hierarchical-menu" class="filter-menu"></div>
+                    </div>
+
+                    <div class="flex items-center gap-2 border-l border-slate-200 pl-3">
+                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sort:</span>
+                        <div class="relative">
+                            <select id="sort-order" onchange="window.handleSortChange(this.value)" class="control-input sort-select">
+                                <option value="newest">Newest First</option>
+                                <option value="oldest">Oldest First</option>
+                            </select>
+                            <i data-lucide="chevron-down" class="absolute right-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="timeline-list" class="timeline-container flex flex-col gap-12 min-h-[220px]">
+                <div class="flex flex-col items-center justify-center w-full bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200 py-12 text-slate-400 font-bold italic text-center">
+                    Double-click map to capture a memory...
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- GALLERY VIEW -->
+    <div id="gallery-view" class="hidden min-h-[90vh] bg-[#fcfdff] p-6 sm:p-12">
+        <div class="max-w-7xl mx-auto">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
+                <div class="flex items-center gap-6">
+                    <button onclick="window.closeGallery()" class="w-14 h-14 bg-white shadow-xl rounded-2xl flex items-center justify-center text-slate-900 hover:bg-slate-900 hover:text-white transition-all active:scale-90">
+                        <i data-lucide="arrow-left" class="w-6 h-6"></i>
+                    </button>
+                    <div>
+                        <h2 id="gallery-title" class="text-4xl font-extrabold text-slate-900 tracking-tight">Memory</h2>
+                        <div class="flex items-center gap-3 mt-2">
+                            <span id="gallery-date" class="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-xs font-black uppercase tracking-widest">Date</span>
+                            <span id="gallery-count" class="text-slate-400 text-sm font-bold">0 Photos</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex gap-3">
+                    <button id="gallery-add-btn" class="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-bold flex items-center gap-2 hover:bg-indigo-700 transition-all active:scale-95 shadow-lg shadow-indigo-100">
+                        <i data-lucide="plus" class="w-4 h-4"></i> Add Photos
+                    </button>
+                    <button id="gallery-map-btn" class="px-6 py-3 bg-white border border-slate-200 rounded-2xl font-bold flex items-center gap-2 hover:bg-slate-50 transition-all active:scale-95 shadow-sm">
+                        <i data-lucide="map-pin" class="w-4 h-4"></i> Show on Map
+                    </button>
+                </div>
+            </div>
+            <div id="gallery-grid" class="columns-2 md:columns-3 lg:columns-4 gap-3 pb-8"></div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center z-[3000] p-4">
+        <div class="bg-white rounded-[2.5rem] max-w-md w-full p-8 shadow-2xl relative border border-slate-100">
+            <h3 id="modal-title" class="text-2xl font-extrabold text-slate-800 mb-6">New Journey Entry</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-1">Destination</label>
+                    <input type="text" id="loc-name" placeholder="Destination name..." class="w-full bg-slate-50 rounded-xl p-4 mt-1 border-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <div class="flex justify-between items-center ml-1">
+                        <label class="text-[10px] font-bold text-slate-400 uppercase">Date</label>
+                        <div class="flex gap-2">
+                            <button onclick="window.setDateShortcut('today')" class="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg uppercase">Today</button>
+                            <button onclick="window.setDateShortcut('yesterday')" class="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg uppercase">Yesterday</button>
+                        </div>
+                    </div>
+                    <input type="date" id="loc-date" class="w-full bg-slate-50 rounded-xl p-4 mt-1 border-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div id="upload-section">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase ml-1">Upload Photos</label>
+                    <input type="file" id="loc-images-file" accept="image/*,video/*" multiple class="w-full bg-slate-50 rounded-xl p-3 mt-1 text-xs">
+                </div>
+                <button id="modal-save-btn" onclick="window.saveMemoryLocally()" class="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold text-lg hover:bg-indigo-700 shadow-xl transition-all">Save Memory</button>
+                <button onclick="window.closeModal()" class="w-full py-2 text-slate-400 font-bold text-sm">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="photos-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center z-[4500] p-4">
+        <div class="bg-white rounded-[2.5rem] max-w-md w-full p-8 shadow-2xl relative">
+            <h3 class="text-2xl font-extrabold text-slate-800 mb-2">Add More Photos</h3>
+            <div class="space-y-4">
+                <div><input type="file" id="photo-append-file" accept="image/*,video/*" multiple class="w-full bg-slate-50 rounded-xl p-3 mt-1 text-xs"></div>
+                <button onclick="window.savePhotosToMemory()" class="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold text-lg hover:bg-indigo-700 shadow-xl">Add Photos</button>
+                <button onclick="window.closePhotosModal()" class="w-full py-2 text-slate-400 font-bold text-sm">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="confirm-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-md hidden items-center justify-center z-[5000] p-4">
+        <div class="bg-white rounded-[2.5rem] max-w-sm w-full p-8 shadow-2xl relative text-center">
+            <div class="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500"><i data-lucide="trash-2" class="w-8 h-8"></i></div>
+            <h3 id="confirm-title" class="text-xl font-bold text-slate-800 mb-2">Are you sure?</h3>
+            <p id="confirm-text" class="text-slate-500 text-sm mb-6">This action cannot be undone.</p>
+            <div class="flex gap-3">
+                <button id="confirm-yes" class="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 transition-all">Confirm</button>
+                <button onclick="window.closeConfirmModal()" class="flex-1 py-3 bg-slate-100 text-slate-500 rounded-xl font-bold">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="message-box" class="fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-4 rounded-full shadow-2xl transform translate-y-40 transition-all duration-500 z-[4000] flex items-center gap-3">
+        <i data-lucide="check-circle" class="w-5 h-5 text-indigo-400"></i>
+        <span id="message-text" class="font-bold text-sm"></span>
+    </div>
+
+    <script type="module" src="app.js"></script>
+    <script src="auth.js"></script>
+    <script src="db.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        window.memories = [];
+        // Helper to reference the global memories correctly everywhere
+        let getMemories = () => window.memories;
+        let map;
+        let currentLatLng;
+        let searchTimer;
+        let editingId = null;
+        let idToDelete = null;
+        let photoAppendId = null;
+        let tempPhotos = [];
+        let currentSortOrder = 'newest';
+        let filterQuery = '';
+        let selectedYear = 'all';
+        let selectedMonth = 'all'; 
+        let userLocationMarker = null; // Track user location marker
+        
+        // Track the specific photo to delete
+        let photoToDelete = { memId: null, index: null };
+
+        const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+        lucide.createIcons();
+
+        // Remove the neon loader after the window fully loads
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                const loader = document.getElementById('initial-loader');
+                loader.style.opacity = '0';
+                loader.style.visibility = 'hidden';
+                setTimeout(() => loader.style.display = 'none', 600);
+            }, 800); // 800ms delay to show the nice animation properly
+        });
+
+        // --- INFINITE SCROLL LOGIC ---
+        window.checkInfinite = function(el) {
+            if(el.children.length < 5) return;
+            const cardWidth = 50; 
+            
+            if (el.scrollLeft <= 2) {
+                el.prepend(el.lastElementChild);
+                el.scrollLeft += cardWidth; 
+            } else if (el.scrollLeft + el.clientWidth >= el.scrollWidth - 2) {
+                el.appendChild(el.firstElementChild);
+                el.scrollLeft -= cardWidth;
+            }
+        };
+
+        window.handleStackWheel = function(e, el) {
+            e.stopPropagation();
+            if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+                e.preventDefault();
+                el.scrollLeft += e.deltaY;
+            }
+        };
+
+        // Store files directly so we can upload them later
+        document.getElementById('loc-images-file').addEventListener('change', (e) => {
+            tempPhotos = Array.from(e.target.files);
+        });
+
+        document.getElementById('photo-append-file').addEventListener('change', (e) => {
+            tempPhotos = Array.from(e.target.files);
+        });
+
+        window.addEventListener('load', () => {
+            map = L.map('map', { zoomControl: false, attributionControl: false, minZoom: 3, doubleClickZoom: false }).setView([20, 78], 4);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png').addTo(map);
+            const dateInput = document.getElementById('loc-date');
+            dateInput.max = new Date().toISOString().split('T')[0];
+            
+            // UPDATED: Dynamic Reverse Geocoding on Double Click
+            map.on('dblclick', async e => { 
+                currentLatLng = e.latlng; 
+                window.openModal(); 
+                
+                const locInput = document.getElementById('loc-name');
+                locInput.value = '';
+                locInput.placeholder = "Finding location...";
+
+                try {
+                    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${e.latlng.lat}&lon=${e.latlng.lng}`);
+                    const data = await res.json();
+                    
+                    if (data && data.address) {
+                        // Extracting a sensible friendly location name
+                        const placeName = data.address.city || data.address.town || data.address.village || data.address.suburb || data.address.state || data.name || "New Place";
+                        
+                        // Only set the value if the user hasn't typed anything yet while it was loading
+                        if (locInput.value === '') {
+                            locInput.value = placeName;
+                        }
+                    } else {
+                        locInput.placeholder = "Type location name manually";
+                    }
+                } catch (error) {
+                    console.error("Reverse geocoding error:", error);
+                    locInput.placeholder = "Type location name manually";
+                }
+            });
+            
+            map.on('mousedown', () => document.querySelectorAll('.pin-wrapper').forEach(p => p.classList.remove('active')));
+        });
+
+        window.setDateShortcut = function(type) {
+            const dateInput = document.getElementById('loc-date');
+            const d = new Date();
+            if (type === 'yesterday') d.setDate(d.getDate() - 1);
+            dateInput.value = d.toISOString().split('T')[0];
+        };
+
+        // --- CURRENT LOCATION LOGIC ---
+        window.goToCurrentLocation = function() {
+            const btn = document.getElementById('location-btn');
+            // Lucide replaces <i> with <svg>, so we try to find either to toggle classes
+            const icon = btn.querySelector('svg') || btn.querySelector('i'); 
+            
+            if (!navigator.geolocation) {
+                showMessage("Your browser does not support geolocation.");
+                return;
+            }
+
+            // Show loading animation on the button
+            if (icon) icon.classList.add('animate-pulse', 'text-indigo-600');
+            showMessage("Finding location...");
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+
+                    // Fly to user location
+                    map.flyTo([lat, lng], 13, { animate: true, duration: 1.5 });
+
+                    // Add or update the blue dot marker
+                    if (userLocationMarker) {
+                        userLocationMarker.setLatLng([lat, lng]);
+                    } else {
+                        const dotIcon = L.divIcon({
+                            className: 'custom-user-location',
+                            html: `<div class="w-5 h-5 bg-blue-500 rounded-full border-[3px] border-white shadow-[0_0_15px_rgba(59,130,246,0.6)] flex items-center justify-center relative"><div class="absolute inset-0 rounded-full border-2 border-blue-400 animate-ping opacity-75"></div></div>`,
+                            iconSize: [20, 20],
+                            iconAnchor: [10, 10]
+                        });
+                        userLocationMarker = L.marker([lat, lng], {icon: dotIcon, zIndexOffset: 1000}).addTo(map);
+                    }
+
+                    // Reset button and show success
+                    if (icon) {
+                        icon.classList.remove('animate-pulse', 'text-indigo-600');
+                        icon.classList.add('text-blue-500');
+                        setTimeout(() => icon.classList.remove('text-blue-500'), 3000);
+                    }
+                    showMessage("Current location found!");
+                },
+                (error) => {
+                    if (icon) icon.classList.remove('animate-pulse', 'text-indigo-600');
+                    
+                    let errorMsg = "Problem fetching location. Please check permissions.";
+                    if (error.code === 1) errorMsg = "Location permission denied.";
+                    else if (error.code === 2) errorMsg = "Position unavailable.";
+                    else if (error.code === 3) errorMsg = "Location request timed out.";
+                    
+                    showMessage(errorMsg);
+                    console.error("Geolocation error code:", error.code, "message:", error.message);
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        };
+
+        window.handleSortChange = (order) => { currentSortOrder = order; window.renderAll(); };
+        window.handleFilterChange = (query) => { filterQuery = query.toLowerCase(); window.renderTimeline(); };
+
+        window.setFilter = function(year, month = 'all') {
+            selectedYear = year;
+            selectedMonth = month;
+            const label = document.getElementById('active-filter-label');
+            if(year === 'all') label.innerText = 'All Years';
+            else if(month === 'all') label.innerText = `Year: ${year}`;
+            else label.innerText = `${monthNames[month]} ${year}`;
+            window.renderTimeline();
+        };
+
+        function updateHierarchicalMenu() {
+            const menu = document.getElementById('hierarchical-menu');
+            const dataMap = {};
+            getMemories().forEach(m => {
+                const yr = m.date.getFullYear();
+                const mo = m.date.getMonth();
+                if(!dataMap[yr]) dataMap[yr] = new Set();
+                dataMap[yr].add(mo);
+            });
+            const uniqueYears = Object.keys(dataMap).sort((a,b) => b - a);
+            let html = `<div class="filter-item" onclick="window.setFilter('all')">All Years</div>`;
+            uniqueYears.forEach(yr => {
+                const months = Array.from(dataMap[yr]).sort((a,b) => a - b);
+                html += `
+                    <div class="filter-item" onclick="window.setFilter('${yr}')">
+                        <span>${yr}</span>
+                        <i data-lucide="chevron-right" class="w-3 h-3 text-slate-300"></i>
+                        <div class="month-flyout">
+                            <div class="month-item font-bold text-indigo-600 mb-1 border-b border-slate-50" onclick="event.stopPropagation(); window.setFilter('${yr}', 'all')">Show Full ${yr}</div>
+                            ${months.map(mo => `
+                                <div class="month-item" onclick="event.stopPropagation(); window.setFilter('${yr}', ${mo})">${monthNames[mo]}</div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            });
+            menu.innerHTML = html;
+            lucide.createIcons();
+        }
+
+        window.openModal = function(id = null) {
+            editingId = id; tempPhotos = [];
+            document.getElementById('modal').style.display = 'flex';
+            if (editingId) {
+                const mem = getMemories().find(m => m.id === editingId);
+                document.getElementById('modal-title').innerText = "Edit Journey Entry";
+                document.getElementById('loc-name').value = mem.title;
+                document.getElementById('loc-date').value = mem.date.toISOString().split('T')[0];
+                document.getElementById('upload-section').classList.add('hidden');
+            } else {
+                document.getElementById('modal-title').innerText = "New Journey Entry";
+                // Note: document.getElementById('loc-name').value is handled inside dblclick event now
+                document.getElementById('loc-date').value = '';
+                document.getElementById('upload-section').classList.remove('hidden');
+            }
+        };
+
+        window.closeModal = () => document.getElementById('modal').style.display = 'none';
+        window.openPhotoUpload = (id) => { photoAppendId = id; tempPhotos = []; document.getElementById('photos-modal').style.display = 'flex'; };
+        window.closePhotosModal = () => document.getElementById('photos-modal').style.display = 'none';
+
+        // --- DELETE SINGLE PHOTO FROM GALLERY ---
+        window.requestDeletePhoto = function(memId, index) {
+            photoToDelete = { memId: memId, index: index };
+            document.getElementById('confirm-title').innerText = "Delete this photo?";
+            document.getElementById('confirm-text').innerText = "This specific photo will be removed permanently.";
+            document.getElementById('confirm-modal').style.display = 'flex';
+        };
+
+        window.openGallery = function(id, focusIndex = null) {
+            const mem = getMemories().find(m => m.id === id);
+            if(!mem) return;
+            
+            document.getElementById('gallery-title').innerText = mem.title;
+            document.getElementById('gallery-date').innerText = mem.date.toLocaleDateString('en-IN', {month:'short', year:'numeric'});
+            document.getElementById('gallery-count').innerText = `${mem.images.length} Photos`;
+            
+            document.getElementById('gallery-add-btn').onclick = () => window.openPhotoUpload(id);
+            document.getElementById('gallery-map-btn').onclick = () => { window.closeGallery(); window.focusMemory(id); };
+
+            const grid = document.getElementById('gallery-grid');
+            grid.innerHTML = mem.images.map((img, idx) => {
+                const url = img.url || img;
+                const name = img.name || `${mem.title} - File ${idx + 1}`;
+                const isVideo = img.type === 'video' || name.match(/\.(mp4|webm|ogg)$/i);
+                
+                let mediaHtml = isVideo 
+                    ? `<video src="${url}" class="w-full h-auto block transition-transform duration-700 group-hover:scale-105" controls></video>`
+                    : `<img src="${url}" class="w-full h-auto block transition-transform duration-700 group-hover:scale-105" />`;
+
+                return `
+                <div id="gallery-img-${idx}" class="group relative break-inside-avoid mb-3 rounded-lg overflow-hidden bg-white shadow-sm border border-slate-200 transition-all duration-500">
+                    ${mediaHtml}
+                    
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4 pointer-events-none">
+                         <span class="text-white font-bold text-sm truncate max-w-full" title="${name}">${name}</span>
+                    </div>
+
+                    <!-- Hover Delete Button -->
+                    <button onclick="event.stopPropagation(); window.requestDeletePhoto('${mem.id}', ${idx})" class="absolute top-3 right-3 bg-white/90 hover:bg-red-500 text-slate-700 hover:text-white p-2.5 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-300 shadow-lg z-10">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    </button>
+                </div>
+                `;
+            }).join('');
+            
+            document.getElementById('main-view').classList.add('hidden');
+            document.getElementById('gallery-view').classList.remove('hidden');
+            
+            if (focusIndex !== null) {
+                setTimeout(() => {
+                    const targetImg = document.getElementById(`gallery-img-${focusIndex}`);
+                    if (targetImg) {
+                        targetImg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        targetImg.classList.add('ring-4', 'ring-indigo-500', 'ring-offset-4', 'scale-[1.02]');
+                        setTimeout(() => {
+                            targetImg.classList.remove('ring-4', 'ring-indigo-500', 'ring-offset-4', 'scale-[1.02]');
+                        }, 2000);
+                    }
+                }, 100); 
+            } else {
+                window.scrollTo(0,0);
+            }
+            
+            lucide.createIcons();
+        };
+
+        window.closeGallery = function() {
+            document.getElementById('gallery-view').classList.add('hidden');
+            document.getElementById('main-view').classList.remove('hidden');
+            window.scrollTo(0,0);
+        };
+
+        window.savePhotosToMemory = async function() {
+            if (!photoAppendId || tempPhotos.length === 0 || !window.firebaseAuth.currentUser) return;
+            
+            const btn = document.querySelector('#photos-modal button.bg-indigo-600');
+            const origText = btn.innerText;
+            btn.innerHTML = `<div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block align-middle mr-2"></div> Uploading...`;
+            btn.disabled = true;
+
+            try {
+                const uploadedData = await Promise.all(tempPhotos.map(file => window.uploadFileToStorage(file)));
+                
+                const memIdx = getMemories().findIndex(m => m.id === photoAppendId);
+                if (memIdx !== -1) { 
+                    const mem = getMemories()[memIdx];
+                    mem.images.push(...uploadedData); 
+                    
+                    // Update Firebase DB
+                    const uid = window.firebaseAuth.currentUser.uid;
+                    const docRef = window.firebaseDoc(window.firebaseDb, "memories_" + uid, mem.id);
+                    await window.firebaseUpdateDoc(docRef, { images: mem.images });
+
+                    showMessage("Photos added!");
+                    if (!document.getElementById('gallery-view').classList.contains('hidden')) {
+                        window.openGallery(photoAppendId);
+                    }
+                }
+                window.renderAll(); 
+                window.closePhotosModal();
+            } catch (error) {
+                console.error("Upload error:", error);
+                showMessage("Failed to upload photos.");
+            } finally {
+                btn.innerHTML = origText;
+                btn.disabled = false;
+                tempPhotos = []; // Reset
+            }
+        };
+
+        window.saveMemoryLocally = async function() {
+            const title = document.getElementById('loc-name').value.trim();
+            const dateStr = document.getElementById('loc-date').value;
+            if(!title || !dateStr || !window.firebaseAuth.currentUser) return;
+            
+            const btn = document.getElementById('modal-save-btn');
+            const origText = btn.innerText;
+            btn.innerHTML = `<div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block align-middle mr-2"></div> Saving...`;
+            btn.disabled = true;
+
+            const selectedDate = new Date(dateStr);
+            const uid = window.firebaseAuth.currentUser.uid;
+
+            try {
+                if (editingId) {
+                    const index = getMemories().findIndex(m => m.id === editingId);
+                    getMemories()[index].title = title; 
+                    getMemories()[index].date = selectedDate;
+                    
+                    // Update Firebase
+                    const docRef = window.firebaseDoc(window.firebaseDb, "memories_" + uid, editingId);
+                    await window.firebaseUpdateDoc(docRef, { 
+                        title: title, 
+                        date: selectedDate.toISOString() 
+                    });
+                } else {
+                    if (tempPhotos.length === 0) {
+                        showMessage("Please select photos!");
+                        btn.innerHTML = origText;
+                        btn.disabled = false;
+                        return;
+                    }
+                    
+                    const uploadedData = await Promise.all(tempPhotos.map(file => window.uploadFileToStorage(file)));
+                    
+                    const newMemory = { 
+                        title, 
+                        date: selectedDate.toISOString(), 
+                        latlng: { lat: currentLatLng.lat, lng: currentLatLng.lng }, 
+                        images: uploadedData 
+                    };
+                    
+                    // Add to Firebase
+                    const docRef = await window.firebaseAddDoc(window.firebaseCollection(window.firebaseDb, "memories_" + uid), newMemory);
+                    
+                    // Update Local State
+                    getMemories().push({
+                        id: docRef.id,
+                        title: newMemory.title,
+                        date: selectedDate,
+                        latlng: newMemory.latlng,
+                        images: newMemory.images
+                    });
+                }
+                window.renderAll(); 
+                window.closeModal();
+            } catch (error) {
+                console.error("Error saving memory:", error);
+                showMessage("Failed to save memory.");
+            } finally {
+                btn.innerHTML = origText;
+                btn.disabled = false;
+                tempPhotos = []; // Reset
+            }
+        };
+
+        window.togglePin = function(id, lat, lng, doPan = true) {
+            const el = document.getElementById(`pin-${id}`);
+            if(!el) return;
+            const wasActive = el.classList.contains('active');
+            
+            document.querySelectorAll('.pin-wrapper').forEach(p => p.classList.remove('active'));
+            
+            if (!wasActive) {
+                el.classList.add('active');
+                
+                if (doPan && lat !== undefined && lng !== undefined && map) {
+                    const pt = map.project([lat, lng], map.getZoom());
+                    pt.y -= 180; 
+                    map.panTo(map.unproject(pt, map.getZoom()), { animate: true });
+                }
+
+                const container = el.querySelector('.stacked-photo-container');
+                if(container && container.children.length > 1) {
+                    setTimeout(() => { if(container.scrollLeft === 0) container.scrollLeft = 50; }, 300);
+                }
+            }
+        };
+
+        window.renderAll = function() {
+            getMemories().sort((a, b) => currentSortOrder === 'newest' ? b.date - a.date : a.date - b.date);
+            updateHierarchicalMenu();
+            map.eachLayer(layer => { if(layer instanceof L.Marker) map.removeLayer(layer); });
+            getMemories().forEach(m => {
+                
+                let displayImages = [...m.images];
+                if (displayImages.length > 0) {
+                    while (displayImages.length < 6) {
+                        displayImages = [...displayImages, ...m.images];
+                    }
+                }
+
+                const tooltipPhotos = displayImages.map((img, idx) => {
+                    const originalIdx = idx % m.images.length; 
+                    const url = img.url || img;
+                    const isVideo = img.type === 'video';
+                    // If it's a video, we might not have a thumbnail easily in this UI setup,
+                    // so we can use a placeholder background or let the video tag play inline.
+                    // For the stack, a background image is easiest.
+                    // We'll use a generic color/icon for video backgrounds if no poster exists.
+                    let bgStyle = `background-image: url('${url}');`;
+                    if(isVideo) {
+                         bgStyle = `background: #1e293b; display:flex; align-items:center; justify-content:center;`;
+                    }
+
+                    return `<div class="stacked-photo-card" onclick="event.stopPropagation(); window.openGallery('${m.id}', ${originalIdx})" style="${bgStyle}">
+                        ${isVideo ? `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="m10 8 6 4-6 4V8Z"/><rect width="20" height="16" x="2" y="4" rx="2" fill="none" stroke="white" stroke-width="2"/></svg>` : ''}
+                    </div>`;
+                }).join('');
+
+                const icon = L.divIcon({
+                    className: 'custom-div-icon',
+                    html: `
+                        <div class="pin-wrapper" id="pin-${m.id}" onclick="event.stopPropagation(); window.togglePin('${m.id}', ${m.latlng.lat}, ${m.latlng.lng})">
+                            <div class="collage-tooltip">
+                                <div class="flex justify-between items-start mb-2">
+                                    <div class="overflow-hidden">
+                                        <span class="block text-sm font-black text-red-500 truncate cursor-pointer hover:underline" onclick="event.stopPropagation(); window.openModal('${m.id}')">${m.title}</span>
+                                        <span class="text-[9px] text-slate-400 font-bold uppercase">${m.images.length} Photos</span>
+                                    </div>
+                                    <div class="flex gap-1">
+                                        <button onclick="event.stopPropagation(); window.openModal('${m.id}')" class="p-1.5 bg-slate-50 rounded-lg text-slate-400 hover:text-indigo-600 transition-colors"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>
+                                        <button onclick="event.stopPropagation(); window.openPhotoUpload('${m.id}')" class="p-1.5 bg-slate-50 rounded-lg text-slate-400 hover:text-indigo-600 transition-colors"><i data-lucide="plus" class="w-3.5 h-3.5"></i></button>
+                                        <button onclick="event.stopPropagation(); window.deleteMemory('${m.id}')" class="p-1.5 bg-slate-50 rounded-lg text-slate-400 hover:text-red-600 transition-colors"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                                    </div>
+                                </div>
+                                <div class="stacked-photo-container" onscroll="window.checkInfinite(this)" onwheel="window.handleStackWheel(event, this)">
+                                    ${tooltipPhotos}
+                                </div>
+                            </div>
+                            <div class="layer-stack">
+                                <div class="shape-layer"><svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg></div>
+                                <div class="shape-layer"><svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg></div>
+                                <div class="shape-layer"><svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg></div>
+                                <div class="shape-layer main"><svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg></div>
+                            </div>
+                        </div>
+                    `,
+                    iconSize: [50, 50], iconAnchor: [25, 45]
+                });
+                const marker = L.marker([m.latlng.lat, m.latlng.lng], {icon}).addTo(map);
+                
+                L.DomEvent.on(marker._icon, 'mousewheel', L.DomEvent.stopPropagation);
+                L.DomEvent.on(marker._icon, 'mousedown', L.DomEvent.stopPropagation);
+                L.DomEvent.on(marker._icon, 'touchstart', L.DomEvent.stopPropagation);
+                L.DomEvent.on(marker._icon, 'touchmove', L.DomEvent.stopPropagation);
+                L.DomEvent.disableClickPropagation(marker._icon);
+            });
+            window.renderTimeline();
+            const statsEl = document.getElementById('stats');
+            if(statsEl) statsEl.innerText = `${getMemories().length} memories collected`;
+            lucide.createIcons();
+        };
+
+        window.renderTimeline = function() {
+            const container = document.getElementById('timeline-list');
+            let filtered = getMemories().filter(m => 
+                m.title.toLowerCase().includes(filterQuery) &&
+                (selectedYear === 'all' || m.date.getFullYear().toString() === selectedYear) &&
+                (selectedMonth === 'all' || m.date.getMonth() === selectedMonth)
+            );
+            if (filtered.length === 0) {
+                container.innerHTML = '<div class="w-full py-12 text-center text-slate-400 italic font-bold text-center">No memories match your selection...</div>';
+                return;
+            }
+            container.innerHTML = '';
+            const years = {};
+            filtered.forEach(m => {
+                const y = m.date.getFullYear();
+                if(!years[y]) years[y] = [];
+                years[y].push(m);
+            });
+            const sortedYears = Object.keys(years).sort((a, b) => currentSortOrder === 'newest' ? b - a : a - b);
+            sortedYears.forEach(year => {
+                const yearGroup = document.createElement('div');
+                yearGroup.className = 'flex flex-col gap-6 w-full';
+                let cardsHtml = '';
+                years[year].forEach(m => {
+                    const collageHtml = m.images.slice(0, 4).map(img => {
+                        const url = img.url || img;
+                        return `<div class="collage-slice" style="background-image: url('${url}')"></div>`;
+                    }).join('');
+                    cardsHtml += `
+                        <div onclick="window.openGallery('${m.id}')" class="timeline-card glass-card rounded-[2rem] p-6 group">
+                            <div class="card-collage">${collageHtml}</div>
+                            <div class="relative z-10">
+                                <div class="flex items-center justify-between mb-4">
+                                    <span class="year-indicator px-3 py-1 rounded-full text-white text-[10px] font-black shadow-sm">${m.date.toLocaleDateString('en-IN', {day:'2-digit', month:'short'})}</span>
+                                    <div class="flex gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all">
+                                        <button onclick="event.stopPropagation(); window.focusMemory('${m.id}')" class="p-2 bg-white/90 rounded-full text-indigo-600 shadow-sm hover:scale-110 hover:bg-white transition-all"><i data-lucide="map-pin" class="w-3.5 h-3.5"></i></button>
+                                        <button onclick="event.stopPropagation(); window.openModal('${m.id}')" class="p-2 bg-white/90 rounded-full text-indigo-600 shadow-sm hover:scale-110 hover:bg-white transition-all"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>
+                                        <button onclick="event.stopPropagation(); window.openPhotoUpload('${m.id}')" class="p-2 bg-white/90 rounded-full text-indigo-600 shadow-sm hover:scale-110 hover:bg-white transition-all"><i data-lucide="plus" class="w-3.5 h-3.5"></i></button>
+                                        <button onclick="event.stopPropagation(); window.deleteMemory('${m.id}')" class="p-2 bg-white/90 rounded-full text-red-500 shadow-sm hover:scale-110 hover:bg-white transition-all"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                                    </div>
+                                </div>
+                                <h4 class="font-extrabold text-white text-lg drop-shadow-lg group-hover:text-indigo-100 transition-colors">${m.title}</h4>
+                                <p class="text-[10px] text-white/80 font-bold uppercase mt-1 tracking-wider group-hover:text-white">${m.images.length} Photos collected</p>
+                            </div>
+                        </div>
+                    `;
+                });
+                yearGroup.innerHTML = `
+                    <div class="px-2 font-black text-slate-400 text-sm tracking-widest uppercase border-l-4 border-indigo-400 ml-2 pl-4 mb-4">${year}</div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 p-6">
+                        ${cardsHtml}
+                    </div>
+                `;
+                container.appendChild(yearGroup);
+            });
+            lucide.createIcons();
+        };
+
+        window.focusMemory = function(id) {
+            const m = getMemories().find(x => x.id === id);
+            if(m && map) { 
+                // Scroll to the map
+                const mapEl = document.getElementById('map');
+                if (mapEl) {
+                    const y = mapEl.getBoundingClientRect().top + window.scrollY - 100;
+                    window.scrollTo({top: y, behavior: 'smooth'});
+                }
+                
+                // Fly to the marker location smoothly
+                map.flyTo([m.latlng.lat, m.latlng.lng], 12, { animate: true, duration: 1.5 }); 
+                
+                // Open the pin and adjust view
+                setTimeout(() => window.togglePin(id, m.latlng.lat, m.latlng.lng, true), 1600); 
+            }
+        };
+
+        window.deleteMemory = function(id) { 
+            idToDelete = id; 
+            photoToDelete = { memId: null, index: null };
+            document.getElementById('confirm-title').innerText = "Are you sure?";
+            document.getElementById('confirm-text').innerText = "This action cannot be undone.";
+            document.getElementById('confirm-modal').style.display = 'flex'; 
+        };
+
+        // --- UPDATED CONFIRM MODAL LOGIC FOR PHOTO DELETE ---
+        document.getElementById('confirm-yes').onclick = async () => {
+            if (!window.firebaseAuth.currentUser) return;
+            const uid = window.firebaseAuth.currentUser.uid;
+            const btn = document.getElementById('confirm-yes');
+            const origText = btn.innerText;
+            btn.innerHTML = `Deleting...`;
+            btn.disabled = true;
+
+            try {
+                if (photoToDelete.memId !== null) {
+                    // Delete specific photo
+                    const m = getMemories().find(x => x.id === photoToDelete.memId);
+                    if (m && m.images.length > photoToDelete.index) {
+                        const imgToDelete = m.images[photoToDelete.index];
+                        
+                        // Delete from storage
+                        if(imgToDelete.path) await window.deleteFileFromStorage(imgToDelete.path);
+                        
+                        m.images.splice(photoToDelete.index, 1);
+                        
+                        // Update Firebase DB
+                        const docRef = window.firebaseDoc(window.firebaseDb, "memories_" + uid, m.id);
+                        await window.firebaseUpdateDoc(docRef, { images: m.images });
+
+                        showMessage("Photo deleted.");
+                        // Re-render gallery directly
+                        if (!document.getElementById('gallery-view').classList.contains('hidden')) {
+                            window.openGallery(photoToDelete.memId);
+                        }
+                    }
+                    photoToDelete = { memId: null, index: null };
+                }
+                else if (idToDelete) { 
+                    // Delete whole memory
+                    const m = getMemories().find(x => x.id === idToDelete);
+                    if(m) {
+                        // Delete all associated files
+                        await Promise.all(m.images.map(img => img.path ? window.deleteFileFromStorage(img.path) : Promise.resolve()));
+                        
+                        // Delete from DB
+                        await window.firebaseDeleteDoc(window.firebaseDoc(window.firebaseDb, "memories_" + uid, m.id));
+                        
+                        window.memories = getMemories().filter(x => x.id !== idToDelete); 
+                        idToDelete = null; 
+                        showMessage("Deleted."); 
+                        if (!document.getElementById('gallery-view').classList.contains('hidden')) window.closeGallery();
+                    }
+                }
+                else { 
+                    // Clear all
+                    for (const m of getMemories()) {
+                        await Promise.all(m.images.map(img => img.path ? window.deleteFileFromStorage(img.path) : Promise.resolve()));
+                        await window.firebaseDeleteDoc(window.firebaseDoc(window.firebaseDb, "memories_" + uid, m.id));
+                    }
+                    window.memories = []; selectedYear = 'all'; selectedMonth = 'all'; showMessage("Cleared."); 
+                }
+                window.renderAll(); 
+            } catch(e) {
+                console.error("Delete error", e);
+                showMessage("Failed to delete.");
+            } finally {
+                btn.innerHTML = origText;
+                btn.disabled = false;
+                // Reset text and close modal
+                document.getElementById('confirm-title').innerText = "Are you sure?";
+                document.getElementById('confirm-text').innerText = "This action cannot be undone.";
+                document.getElementById('confirm-modal').style.display = 'none';
+            }
+        };
+
+        window.closeConfirmModal = () => {
+            photoToDelete = { memId: null, index: null };
+            document.getElementById('confirm-modal').style.display = 'none';
+            document.getElementById('confirm-title').innerText = "Are you sure?";
+            document.getElementById('confirm-text').innerText = "This action cannot be undone.";
+        };
+
+        window.requestClearAll = () => { 
+            idToDelete = null; 
+            photoToDelete = { memId: null, index: null };
+            document.getElementById('confirm-title').innerText = "Clear All Memories?"; 
+            document.getElementById('confirm-text').innerText = "This action cannot be undone.";
+            document.getElementById('confirm-modal').style.display = 'flex'; 
+        };
+
+        function showMessage(msg) {
+            const box = document.getElementById('message-box');
+            const text = document.getElementById('message-text');
+            if(text) text.innerText = msg;
+            box.classList.remove('translate-y-40');
+            setTimeout(() => box.classList.add('translate-y-40'), 3000);
+        }
+
+        async function debounceSearch(q) {
+            clearTimeout(searchTimer);
+            if(q.length < 3) return;
+            searchTimer = setTimeout(async () => {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}`);
+                const data = await res.json();
+                const list = document.getElementById('search-results');
+                list.innerHTML = data.map(i => `<div onclick="map.flyTo([${i.lat}, ${i.lon}], 12); document.getElementById('search-results-container').classList.add('hidden')" class="p-3 hover:bg-slate-50 cursor-pointer border-b text-xs font-medium">${i.display_name}</div>`).join('');
+                document.getElementById('search-results-container').classList.remove('hidden');
+            }, 500);
+        }
+    </script>
+</body>
+</html>
