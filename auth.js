@@ -105,21 +105,39 @@ window.handleLogin = async function() {
 };
 
 window.handleSignup = async function() {
-    const email = document.getElementById('auth-email').value;
+    const email = document.getElementById('auth-email').value.trim();
     const password = document.getElementById('auth-password').value;
     const errorEl = document.getElementById('auth-error');
 
     if(!email || !password) {
-        errorEl.textContent = "Please enter email and password.";
+        errorEl.textContent = "Please enter email and password before clicking Create Account.";
         errorEl.classList.remove('hidden');
         return;
     }
 
     try {
+        errorEl.textContent = "Creating account...";
+        errorEl.classList.remove('hidden');
+        errorEl.classList.remove('bg-red-50', 'text-red-600', 'border-red-100');
+        errorEl.classList.add('bg-indigo-50', 'text-indigo-600', 'border-indigo-100');
+
         await window.firebaseCreateUserWithEmailAndPassword(window.firebaseAuth, email, password);
+        
         errorEl.classList.add('hidden');
     } catch (error) {
-        errorEl.textContent = error.message;
+        errorEl.classList.add('bg-red-50', 'text-red-600', 'border-red-100');
+        errorEl.classList.remove('bg-indigo-50', 'text-indigo-600', 'border-indigo-100');
+        
+        // Make errors more readable
+        if (error.code === 'auth/email-already-in-use') {
+            errorEl.textContent = "This email is already registered. Please sign in instead.";
+        } else if (error.code === 'auth/operation-not-allowed') {
+            errorEl.innerHTML = "<strong>Error:</strong> Email/Password login is not enabled in Firebase. Please go to Firebase Console -> Authentication -> Sign-in method, and enable 'Email/Password'.";
+        } else if (error.code === 'auth/weak-password') {
+            errorEl.textContent = "Password is too weak. Please use at least 6 characters.";
+        } else {
+            errorEl.textContent = error.message;
+        }
         errorEl.classList.remove('hidden');
     }
 };
